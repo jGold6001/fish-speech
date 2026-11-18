@@ -1,8 +1,4 @@
-import json
-import multiprocessing
-import os
 import re
-from argparse import Namespace
 from threading import Lock
 
 import pyrootutils
@@ -29,12 +25,10 @@ from tools.server.exception_handler import ExceptionHandler
 from tools.server.model_manager import ModelManager
 from tools.server.views import routes
 
-ENV_ARGS_KEY = "FISH_API_SERVER_ARGS"
-
 
 class API(ExceptionHandler):
-    def __init__(self, args: Namespace | None = None):
-        self.args = args or parse_args()
+    def __init__(self):
+        self.args = parse_args()
 
         def api_auth(endpoint):
             async def verify(token: Annotated[str, Depends(bearer_auth)]):
@@ -60,7 +54,7 @@ class API(ExceptionHandler):
             Info(
                 {
                     "title": "Fish Speech API",
-                    "version": "3.0.0",
+                    "version": "1.5.0",
                 }
             ),
         ).routes
@@ -91,30 +85,13 @@ class API(ExceptionHandler):
             device=self.args.device,
             half=self.args.half,
             compile=self.args.compile,
+            asr_enabled=self.args.load_asr_model,
             llama_checkpoint_path=self.args.llama_checkpoint_path,
             decoder_checkpoint_path=self.args.decoder_checkpoint_path,
             decoder_config_name=self.args.decoder_config_name,
-            reference_sampling=(
-                self.args.reference_sampling_fallback
-                if self.args.reference_sampling
-                else None
-            ),
         )
 
         logger.info(f"Startup done, listening server at http://{self.args.listen}")
-
-
-def create_app():
-    args_env = os.environ.get(ENV_ARGS_KEY)
-    args = None
-
-    if args_env:
-        try:
-            args = Namespace(**json.loads(args_env))
-        except Exception as exc:
-            logger.warning(f"Failed to load args from {ENV_ARGS_KEY}: {exc}")
-
-    return API(args=args).app
 
 
 # Each worker process created by Uvicorn has its own memory space,
@@ -127,24 +104,19 @@ def create_app():
 # Instead, it's better to use multiprocessing or independent models per thread.
 
 if __name__ == "__main__":
-
-    multiprocessing.set_start_method("spawn", force=True)
-
-    args = parse_args()
-    os.environ[ENV_ARGS_KEY] = json.dumps(vars(args))
+    api = API()
 
     # IPv6 address format is [xxxx:xxxx::xxxx]:port
-    match = re.search(r"\[([^\]]+)\]:(\d+)$", args.listen)
+    match = re.search(r"\[([^\]]+)\]:(\d+)$", api.args.listen)
     if match:
         host, port = match.groups()  # IPv6
     else:
-        host, port = args.listen.split(":")  # IPv4
+        host, port = api.args.listen.split(":")  # IPv4
 
     uvicorn.run(
-        "tools.api_server:create_app",
+        api.app,
         host=host,
         port=int(port),
-        workers=args.workers,
+        workers=api.args.workers,
         log_level="info",
-        factory=True,
     )

@@ -600,18 +600,5 @@ class FireflyArchitecture(nn.Module):
             self.head.remove_parametrizations()
 
     @property
-    def sample_rate(self):
-        return self.spec_transform.sample_rate
-
-    def from_indices(self, indices):
-        feature_lengths = torch.full(
-            (indices.shape[0],),
-            indices.shape[-1],
-            device=indices.device,
-            dtype=torch.long,
-        )
-        return self.decode(indices, feature_lengths)[0]
-
-    @property
     def device(self):
         return next(self.parameters()).device
