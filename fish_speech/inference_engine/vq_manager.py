@@ -4,19 +4,20 @@ import torch
 from loguru import logger
 
 from fish_speech.models.dac.modded_dac import DAC
+from fish_speech.models.vqgan.modules.firefly import FireflyArchitecture
 
 
 class VQManager:
 
     def __init__(self):
         # Make Pylance happy (attribut/method not defined...)
-        self.decoder_model: DAC
+        self.decoder_model: DAC | FireflyArchitecture
         self.load_audio: Callable
 
     def decode_vq_tokens(self, codes):
         logger.info(f"VQ features: {codes.shape}")
 
-        if isinstance(self.decoder_model, DAC):
+        if isinstance(self.decoder_model, (DAC, FireflyArchitecture)):
             # Drama 3 hands over its codes on the CPU.
             codes = codes.to(self.decoder_model.device)
             return self.decoder_model.from_indices(codes[None])[0].squeeze()
@@ -44,7 +45,7 @@ class VQManager:
             )
 
             # VQ Encoder
-            if isinstance(self.decoder_model, DAC):
+            if isinstance(self.decoder_model, (DAC, FireflyArchitecture)):
                 prompt_tokens = self.decoder_model.encode(audios, audio_lengths)[0][0]
                 logger.info(f"Encoded prompt: {prompt_tokens.shape}")
             else:

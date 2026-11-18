@@ -49,6 +49,11 @@ from fish_speech.models.text2semantic.fish_omni.tower import (
     REFERENCE_SAMPLING_FALLBACKS,
     ReferenceSamplingFallback,
 )
+from fish_speech.models.text2semantic.legacy import (
+    FIREFLY_CHECKPOINT,
+    generate_long_legacy,
+    is_legacy_checkpoint,
+)
 from fish_speech.models.text2semantic.sampling import (
     DEFAULT_CHUNK_LENGTH,
     DEFAULT_MAX_NEW_TOKENS,
@@ -494,7 +499,7 @@ def init_model(
 def resolve_codec_path(
     checkpoint_path: str | Path, codec_path: str | Path | None = None
 ) -> Path:
-    """codec_path, else <checkpoint>/codec.pth, else the sibling s2-pro/codec.pth.
+    """Explicit codec, the checkpoint's Firefly/DAC, or the S2-Pro fallback.
 
     Drama 3 uses the S2-Pro codec, and fine-tuned S2-Pro directories may not carry one.
     """
@@ -504,6 +509,14 @@ def resolve_codec_path(
             raise FileNotFoundError(f"codec checkpoint does not exist: {codec_path}")
         return codec_path
     checkpoint_path = Path(checkpoint_path)
+    if is_legacy_checkpoint(checkpoint_path):
+        candidate = checkpoint_path / FIREFLY_CHECKPOINT
+        if candidate.is_file():
+            return candidate
+        raise FileNotFoundError(
+            f"no Firefly codec in {checkpoint_path}; pass --decoder-checkpoint-path "
+            f"with the Fish Speech 1.5 {FIREFLY_CHECKPOINT} weights"
+        )
     candidate = checkpoint_path / "codec.pth"
     if candidate.is_file():
         return candidate
@@ -521,14 +534,10 @@ def resolve_codec_path(
 
 @torch.inference_mode()
 def load_codec_model(codec_checkpoint_path, device, precision=torch.bfloat16):
-    """Load the DAC codec model for audio encoding/decoding.
+    """Load the matching DAC or Firefly codec for audio encoding/decoding.
 
     Weight norm is folded in fp32 before the cast, which keeps FP16 exact enough.
     """
-    config_path = Path(__file__).parent.parent.parent / "configs" / "modded_dac_vq.yaml"
-    cfg = OmegaConf.load(str(config_path))
-    codec = instantiate(cfg)
-
     state_dict = torch.load(
         codec_checkpoint_path, map_location="cpu", mmap=True, weights_only=True
     )
@@ -540,6 +549,14 @@ def load_codec_model(codec_checkpoint_path, device, precision=torch.bfloat16):
             for k, v in state_dict.items()
             if "generator." in k
         }
+    config_name = (
+        "firefly_gan_vq"
+        if any(k.startswith("quantizer.residual_fsq.") for k in state_dict)
+        else "modded_dac_vq"
+    )
+    config_path = Path(__file__).parent.parent.parent / "configs" / f"{config_name}.yaml"
+    cfg = OmegaConf.load(str(config_path))
+    codec = instantiate(cfg)
     rebuilt_buffers = {
         f"{name}.{buffer}" if name else buffer
         for name, module in codec.named_modules()
@@ -553,6 +570,10 @@ def load_codec_model(codec_checkpoint_path, device, precision=torch.bfloat16):
             remove_parametrizations(module, "weight", leave_parametrized=True)
         elif hasattr(module, "weight_g"):
             torch.nn.utils.remove_weight_norm(module)
+    if config_name == "firefly_gan_vq":
+        # Firefly's STFT and FSQ operations produce fp32 tensors. Keep matching
+        # weights, as the API loader does, so encoding also works without autocast.
+        precision = torch.float32
     codec.to(device=device, dtype=precision)
     logger.info(f"Loaded codec {codec_checkpoint_path} on {device} ({precision})")
     return codec
@@ -708,6 +729,25 @@ def generate_long(
         )
     if top_k < 1:
         raise InvalidInputError(f"top_k must be at least 1 for S2-Pro; got {top_k}")
+
+    if getattr(model.tokenizer, "is_legacy", False):
+        yield from generate_long_legacy(
+            model=model,
+            device=device,
+            decode_one_token=decode_one_token,
+            text=text,
+            num_samples=num_samples,
+            max_new_tokens=max_new_tokens,
+            top_p=top_p,
+            top_k=top_k,
+            temperature=temperature,
+            iterative_prompt=iterative_prompt,
+            chunk_length=chunk_length,
+            prompt_text=prompt_text,
+            prompt_tokens=prompt_tokens,
+            single_chunk=single_chunk,
+        )
+        return
 
     use_prompt = bool(prompt_text) and bool(prompt_tokens)
     if use_prompt and isinstance(prompt_text, str):

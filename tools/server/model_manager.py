@@ -16,12 +16,13 @@ from fish_speech.models.text2semantic.inference import (
     load_codec_model,
     resolve_codec_path,
 )
+from fish_speech.models.text2semantic.legacy import is_legacy_checkpoint
 from fish_speech.utils.schema import ServeTTSRequest
 from tools.server.inference import inference_wrapper as inference
 
 
 class ModelManager:
-    """Loads one TTS model (S2-Pro or multi-GPU-capable Drama 3) plus the DAC codec."""
+    """Loads a TTS model and its matching DAC or legacy Firefly codec."""
 
     def __init__(
         self,
@@ -42,7 +43,11 @@ class ModelManager:
         self.reference_sampling = reference_sampling
         self.precision = torch.half if half else torch.bfloat16
         self.model_family: ModelFamily = (
-            "drama3" if is_fish_omni_checkpoint(llama_checkpoint_path) else "s2"
+            "drama3"
+            if is_fish_omni_checkpoint(llama_checkpoint_path)
+            else "s1.5"
+            if is_legacy_checkpoint(llama_checkpoint_path)
+            else "s2"
         )
         if reference_sampling is not None and self.model_family != "drama3":
             raise ValueError("--reference-sampling needs a Drama 3 checkpoint")

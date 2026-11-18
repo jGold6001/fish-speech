@@ -37,6 +37,7 @@ dependencies = [
     "pydantic==2.9.2",
     "cachetools",
     "descript-audio-codec",
+    "vector-quantize-pytorch==1.14.24",
     "safetensors",
     "tokenizers==0.23.2",
     "soundfile>=0.12.1",

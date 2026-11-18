@@ -30,15 +30,15 @@ def parse_args():
         "--llama-checkpoint-path",
         type=str,
         default="checkpoints/s2-pro",
-        help="S2-Pro (dual_ar) or Drama 3 (fish_omni) checkpoint directory; "
+        help="Fish Speech 1.5, S2-Pro (dual_ar) or Drama 3 (fish_omni) checkpoint directory; "
         "the model type is detected from its config.json.",
     )
     parser.add_argument(
         "--decoder-checkpoint-path",
         type=str,
         default=None,
-        help="DAC codec weights. Defaults to <checkpoint>/codec.pth, else the "
-        "sibling s2-pro/codec.pth.",
+        help="Codec weights. Fish Speech 1.5 uses its Firefly generator; newer "
+        "models default to <checkpoint>/codec.pth, else sibling s2-pro/codec.pth.",
     )
     parser.add_argument("--decoder-config-name", type=str, default="modded_dac_vq")
     parser.add_argument(

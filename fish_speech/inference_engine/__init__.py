@@ -29,10 +29,10 @@ from fish_speech.models.text2semantic.sampling import (
 from fish_speech.utils import autocast_exclude_mps, set_seed
 from fish_speech.utils.schema import ServeTTSRequest
 
-ModelFamily = Literal["s2", "drama3"]
+ModelFamily = Literal["s1.5", "s2", "drama3"]
 
 # Used for every sampling field a request leaves unset (None): the official Fish
-# Audio SDK's defaults, the same for both families. max_new_tokens applies to
+# Audio SDK's defaults, the same for all families. max_new_tokens applies to
 # each text chunk.
 _SDK_DEFAULTS = dict(
     max_new_tokens=DEFAULT_MAX_NEW_TOKENS,
@@ -42,6 +42,7 @@ _SDK_DEFAULTS = dict(
     temperature=DEFAULT_TEMPERATURE,
 )
 SAMPLING_DEFAULTS: dict[ModelFamily, dict[str, int | float]] = {
+    "s1.5": dict(_SDK_DEFAULTS),
     "s2": dict(_SDK_DEFAULTS),
     "drama3": dict(_SDK_DEFAULTS),
 }
@@ -87,6 +88,8 @@ class TTSInferenceEngine(ReferenceLoader, VQManager):
 
     def tag_reference_text(self, text: str, speaker: int | None) -> str:
         """Prefix <|speaker:N|> unless speaker is None or a tag already leads text."""
+        if self.model_family == "s1.5":
+            return text
         if speaker is None or SPEAKER_TAG_PATTERN.match(
             text.lstrip(UNICODE_WHITE_SPACE)
         ):

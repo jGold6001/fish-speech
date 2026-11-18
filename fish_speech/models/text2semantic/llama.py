@@ -53,6 +53,7 @@ class BaseModelArgs:
 
     # Dummy vars
     is_reward_model: bool = False
+    share_codebook_embeddings: bool = True
     scale_codebook_embeddings: bool = False
     audio_embed_dim: Optional[int] = None
 
@@ -329,9 +330,12 @@ class BaseTransformer(nn.Module):
         # Embedding logic replicated from embed() for compilation compatibility
         embeds = []
         for i in range(self.config.num_codebooks):
-            emb = self.codebook_embeddings(
-                inp[:, i + 1] + i * self.config.codebook_size
+            offset = (
+                i * self.config.codebook_size
+                if self.config.share_codebook_embeddings
+                else 0
             )
+            emb = self.codebook_embeddings(inp[:, i + 1] + offset)
             embeds.append(emb)
 
         vq_embeds_sum = torch.stack(embeds, dim=1).sum(dim=1)

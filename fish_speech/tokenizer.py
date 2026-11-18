@@ -123,6 +123,12 @@ class FishTokenizer:
 
     @classmethod
     def from_pretrained(cls, path: str):
+        if (Path(path) / "tokenizer.tiktoken").is_file():
+            from fish_speech.models.text2semantic.legacy_tokenizer import (
+                FishTokenizer as LegacyFishTokenizer,
+            )
+
+            return LegacyFishTokenizer.from_pretrained(path)
         return cls(path)
 
     def __getattr__(self, name):
